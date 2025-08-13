@@ -1,0 +1,789 @@
+Enter password: ***********
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 11
+Server version: 8.4.6 MySQL Community Server - GPL
+
+Copyright (c) 2000, 2025, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> DROP DATABASE IF EXISTS library_db;
+Query OK, 0 rows affected, 1 warning (0.01 sec)
+
+mysql> CREATE DATABASE library_db;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> USE library_db;
+Database changed
+mysql> /* ---------------------
+   /*>    TABLES + CONSTRAINTS
+   /*>    --------------------- */
+    ->
+    -> -- Authors (dimension)
+    -> CREATE TABLE authors (
+    ->   author_id     INT PRIMARY KEY AUTO_INCREMENT,
+    ->   name          VARCHAR(100) NOT NULL,
+    ->   nationality   VARCHAR(60),
+    ->   UNIQUE KEY uk_author_name (name)
+    -> );
+Query OK, 0 rows affected (0.06 sec)
+
+mysql> -- Categories/Genres (dimension)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE TABLE categories (
+    ->   category_id    INT PRIMARY KEY AUTO_INCREMENT,
+    ->   category_name  VARCHAR(60) NOT NULL,
+    ->   UNIQUE KEY uk_category_name (category_name)
+    -> );
+Query OK, 0 rows affected (0.04 sec)
+
+mysql> -- Books (fact-ish)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE TABLE books (
+    ->   book_id           INT PRIMARY KEY AUTO_INCREMENT,
+    ->   title             VARCHAR(200) NOT NULL,
+    ->   author_id         INT NOT NULL,
+    ->   category_id       INT NOT NULL,
+    ->   published_year    YEAR,
+    ->   price             DECIMAL(8,2) DEFAULT 0 CHECK (price >= 0),
+    ->   total_copies      INT NOT NULL CHECK (total_copies >= 0),
+    ->   available_copies  INT NOT NULL CHECK (available_copies >= 0),
+    ->   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ->   CONSTRAINT fk_books_author    FOREIGN KEY (author_id)   REFERENCES authors(author_id)   ON DELETE RESTRICT ON UPDATE CASCADE,
+    ->   CONSTRAINT fk_books_category  FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE RESTRICT ON UPDATE CASCADE
+    -> );
+Query OK, 0 rows affected (0.05 sec)
+
+mysql> -- Helpful indexes for search
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE INDEX idx_books_title ON books(title);
+Query OK, 0 rows affected (0.03 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> CREATE INDEX idx_books_author ON books(author_id);
+Query OK, 0 rows affected (0.01 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> CREATE INDEX idx_books_category ON books(category_id);
+Query OK, 0 rows affected (0.02 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> -- Members
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE TABLE members (
+    ->   member_id   INT PRIMARY KEY AUTO_INCREMENT,
+    ->   name        VARCHAR(100) NOT NULL,
+    ->   email       VARCHAR(120) NOT NULL,
+    ->   phone       VARCHAR(20),
+    ->   join_date   DATE NOT NULL DEFAULT (CURRENT_DATE),
+    ->   CONSTRAINT uk_members_email UNIQUE (email)
+    -> );
+Query OK, 0 rows affected (0.03 sec)
+
+mysql> -- Loans (borrowing records)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE TABLE loans (
+    ->   loan_id      INT PRIMARY KEY AUTO_INCREMENT,
+    ->   book_id      INT NOT NULL,
+    ->   member_id    INT NOT NULL,
+    ->   loan_date    DATE NOT NULL DEFAULT (CURRENT_DATE),
+    ->   due_date     DATE NOT NULL,                  -- must be >= loan_date
+    ->   return_date  DATE NULL,
+    ->   status       ENUM('Issued','Returned','Overdue') NOT NULL DEFAULT 'Issued',
+    ->   CONSTRAINT fk_loans_book   FOREIGN KEY (book_id)   REFERENCES books(book_id)     ON DELETE RESTRICT ON UPDATE CASCADE,
+    ->   CONSTRAINT fk_loans_member FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    ->   CONSTRAINT chk_due_after_loan CHECK (due_date >= loan_date)
+    -> );
+Query OK, 0 rows affected (0.04 sec)
+
+mysql> -- Each loan can have at most one fine record
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE TABLE fines (
+    ->   fine_id     INT PRIMARY KEY AUTO_INCREMENT,
+    ->   loan_id     INT NOT NULL,
+    ->   amount      DECIMAL(8,2) NOT NULL CHECK (amount >= 0),
+    ->   paid        ENUM('No','Yes') NOT NULL DEFAULT 'No',
+    ->   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ->   CONSTRAINT uk_fines_loan UNIQUE (loan_id),
+    ->   CONSTRAINT fk_fines_loan FOREIGN KEY (loan_id) REFERENCES loans(loan_id) ON DELETE CASCADE ON UPDATE CASCADE
+    -> );
+Query OK, 0 rows affected (0.04 sec)
+
+mysql> -- Activity log (simple audit)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE TABLE activity_log (
+    ->   log_id      INT PRIMARY KEY AUTO_INCREMENT,
+    ->   action      VARCHAR(50) NOT NULL,
+    ->   details     VARCHAR(255),
+    ->   action_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    -> );
+Query OK, 0 rows affected (0.02 sec)
+
+mysql> /* ---------------
+   /*>    SAMPLE DATA
+   /*>    --------------- */
+    ->
+    -> INSERT INTO authors (name, nationality) VALUES
+    ->   ('J. K. Rowling', 'UK'),
+    ->   ('George R. R. Martin', 'USA'),
+    ->   ('J. R. R. Tolkien', 'UK'),
+    ->   ('Agatha Christie', 'UK'),
+    ->   ('Chetan Bhagat', 'India');
+Query OK, 5 rows affected (0.01 sec)
+Records: 5  Duplicates: 0  Warnings: 0
+
+mysql> INSERT INTO categories (category_name) VALUES
+    ->   ('Fantasy'), ('Mystery'), ('Thriller'), ('Romance'), ('Non-Fiction');
+Query OK, 5 rows affected (0.01 sec)
+Records: 5  Duplicates: 0  Warnings: 0
+
+mysql> INSERT INTO books (title, author_id, category_id, published_year, price, total_copies, available_copies) VALUES
+    ->   ('Harry Potter and the Philosopher\'s Stone', 1, 1, 1997, 499.00, 10, 10),
+    ->   ('A Game of Thrones', 2, 1, 1996, 699.00, 8, 8),
+    ->   ('The Hobbit', 3, 1, 1937, 399.00, 5, 5),
+    ->   ('Murder on the Orient Express', 4, 2, 1934, 299.00, 6, 6),
+    ->   ('2 States', 5, 4, 2009, 199.00, 4, 4);
+Query OK, 5 rows affected (0.01 sec)
+Records: 5  Duplicates: 0  Warnings: 0
+
+mysql> INSERT INTO members (name, email, phone) VALUES
+    ->   ('Aarav Sharma', 'aarav@example.com', '9876543210'),
+    ->   ('Isha Verma', 'isha@example.com', '9876501234'),
+    ->   ('Rohan Mehta', 'rohan@example.com', '9876512345');
+Query OK, 3 rows affected (0.01 sec)
+Records: 3  Duplicates: 0  Warnings: 0
+
+mysql> /* -----------------------------
+   /*>    FUNCTION: Calculate fine
+   /*>    Rs. 5 per late day (customize)
+   /*>    ----------------------------- */
+    -> DELIMITER $$
+mysql> CREATE OR REPLACE FUNCTION fn_calc_fine(p_due_date DATE, p_return_date DATE)
+    -> RETURNS DECIMAL(8,2)
+    -> DETERMINISTIC
+    -> BEGIN
+    ->   DECLARE days_late INT;
+    ->   SET days_late = GREATEST(DATEDIFF(p_return_date, p_due_date), 0);
+    ->   RETURN days_late * 5.00;
+    -> END$$
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'FUNCTION fn_calc_fine(p_due_date DATE, p_return_date DATE)
+RETURNS DECIMAL(8,2)
+' at line 1
+mysql> DELIMITER $$
+mysql>
+mysql> DROP FUNCTION IF EXISTS fn_calc_fine$$
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> CREATE FUNCTION fn_calc_fine(p_due_date DATE, p_return_date DATE)
+    -> RETURNS DECIMAL(8,2)
+    -> DETERMINISTIC
+    -> BEGIN
+    ->     DECLARE days_late INT;
+    ->     SET days_late = GREATEST(DATEDIFF(p_return_date, p_due_date), 0);
+    ->     RETURN days_late * 5.00;
+    -> END$$
+Query OK, 0 rows affected (0.01 sec)
+
+mysql>
+mysql> DELIMITER ;
+mysql> /* -----------------------------------------
+   /*>    TRIGGERS to enforce inventory consistency
+   /*>    ----------------------------------------- */
+    -> DELIMITER $$
+mysql>
+mysql> DROP TRIGGER IF EXISTS trg_loans_before_insert$$
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> CREATE TRIGGER trg_loans_before_insert
+    -> BEFORE INSERT ON loans
+    -> FOR EACH ROW
+    -> BEGIN
+    ->     DECLARE available INT;
+    ->
+    ->     -- Get the available copies for the book
+    ->     SELECT available_copies INTO available
+    ->     FROM books
+    ->     WHERE book_id = NEW.book_id;
+    ->
+    ->     -- If no copies are available, block the insert
+    ->     IF available <= 0 THEN
+    ->         SIGNAL SQLSTATE '45000'
+    ->         SET MESSAGE_TEXT = 'No available copies for this book.';
+    ->     END IF;
+    -> END$$
+Query OK, 0 rows affected (0.02 sec)
+
+mysql>
+mysql> DELIMITER ;
+mysql> -- After inserting a loan, decrement available copies and log
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> DELIMITER $$
+mysql>
+mysql> DROP TRIGGER IF EXISTS trg_loans_after_insert$$
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> CREATE TRIGGER trg_loans_after_insert
+    -> AFTER INSERT ON loans
+    -> FOR EACH ROW
+    -> BEGIN
+    ->     -- Decrement available copies
+    ->     UPDATE books
+    ->     SET available_copies = available_copies - 1
+    ->     WHERE book_id = NEW.book_id;
+    ->
+    ->     -- Log the activity
+    ->     INSERT INTO activity_log(action, details)
+    ->     VALUES ('ISSUE', CONCAT('Loan ', NEW.loan_id, ': Book ', NEW.book_id, ' to Member ', NEW.member_id));
+    -> END$$
+Query OK, 0 rows affected (0.01 sec)
+
+mysql>
+mysql> DELIMITER ;
+mysql> -- When a loan is returned (return_date becomes NOT NULL), increment copies & set status Returned
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> DELIMITER $$
+mysql>
+mysql> DROP TRIGGER IF EXISTS trg_loans_after_update_return$$
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> CREATE TRIGGER trg_loans_after_update_return
+    -> AFTER UPDATE ON loans
+    -> FOR EACH ROW
+    -> BEGIN
+    ->     -- Check if the book was just returned
+    ->     IF NEW.return_date IS NOT NULL AND OLD.return_date IS NULL THEN
+    ->
+    ->         -- Increment available copies
+    ->         UPDATE books
+    ->         SET available_copies = available_copies + 1
+    ->         WHERE book_id = NEW.book_id;
+    ->
+    ->         -- Log the return activity
+    ->         INSERT INTO activity_log(action, details)
+    ->         VALUES ('RETURN', CONCAT('Loan ', NEW.loan_id, ' returned on ', NEW.return_date));
+    ->     END IF;
+    -> END$$
+Query OK, 0 rows affected (0.01 sec)
+
+mysql>
+mysql> DELIMITER ;
+mysql> /* ---------------------------------------------------
+   /*>    PROCEDURES: Issue and Return (with transactions)
+   /*>    --------------------------------------------------- */
+    ->
+    -> -- Issue a book for N days
+    -> DELIMITER $$
+    $>
+    $> DROP PROCEDURE IF EXISTS sp_issue_book$$
+    ->
+    -> CREATE PROCEDURE sp_issue_book(
+    ->     IN p_member_id INT,
+    ->     IN p_book_id   INT,
+    ->     IN p_days      INT
+    -> )
+    -> BEGIN
+    ->     DECLARE v_available INT;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'DELIMITER $$
+
+DROP PROCEDURE IF EXISTS sp_issue_book$$
+
+CREATE PROCEDURE sp_issu' at line 6
+mysql>     DECLARE v_due DATE;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'DECLARE v_due DATE' at line 1
+mysql>
+mysql>     START TRANSACTION;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql>
+mysql>     -- Check if member exists
+    ->     IF NOT EXISTS (SELECT 1 FROM members WHERE member_id = p_member_id) THEN
+    ->         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Member not found';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'IF NOT EXISTS (SELECT 1 FROM members WHERE member_id = p_member_id) THEN
+       ' at line 2
+mysql>     END IF;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'END IF' at line 1
+mysql>
+mysql>     -- Check if book exists
+    ->     IF NOT EXISTS (SELECT 1 FROM books WHERE book_id = p_book_id) THEN
+    ->         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Book not found';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'IF NOT EXISTS (SELECT 1 FROM books WHERE book_id = p_book_id) THEN
+        SIGNA' at line 2
+mysql>     END IF;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'END IF' at line 1
+mysql>
+mysql>     -- Check availability with row lock
+    ->     SELECT available_copies INTO v_available
+    ->     FROM books
+    ->     WHERE book_id = p_book_id
+    ->     FOR UPDATE;
+ERROR 1327 (42000): Undeclared variable: v_available
+mysql>
+mysql>     IF v_available <= 0 THEN
+    ->         ROLLBACK;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'IF v_available <= 0 THEN
+        ROLLBACK' at line 1
+mysql>         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No available copies to issue.';
+ERROR 1644 (45000): No available copies to issue.
+mysql>     END IF;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'END IF' at line 1
+mysql>
+mysql>     -- Calculate due date
+    ->     SET v_due = DATE_ADD(CURRENT_DATE, INTERVAL p_days DAY);
+ERROR 1193 (HY000): Unknown system variable 'v_due'
+mysql>
+mysql>     -- Insert loan (triggers handle decrement & logging)
+    ->     INSERT INTO loans(book_id, member_id, due_date)
+    ->     VALUES (p_book_id, p_member_id, v_due);
+ERROR 1054 (42S22): Unknown column 'p_book_id' in 'field list'
+mysql>
+mysql>     COMMIT;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> END$$
+    ->
+    -> DELIMITER ;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'END$$
+
+DELIMITER' at line 1
+mysql> DROP PROCEDURE IF EXISTS sp_issue_book;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> DELIMITER $$
+mysql>
+mysql> CREATE PROCEDURE sp_issue_book(IN p_member_id INT, IN p_book_id INT, IN p_days INT)
+    -> BEGIN
+    ->     DECLARE v_available INT;
+    ->     DECLARE v_due DATE;
+    ->
+    ->     START TRANSACTION;
+    ->
+    ->     -- Check member exists
+    ->     IF (SELECT COUNT(*) FROM members WHERE member_id = p_member_id) = 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'Member not found' AS error_message;
+    ->         LEAVE;
+    ->     END IF;
+    ->
+    ->     -- Check book exists
+    ->     IF (SELECT COUNT(*) FROM books WHERE book_id = p_book_id) = 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'Book not found' AS error_message;
+    ->         LEAVE;
+    ->     END IF;
+    ->
+    ->     -- Check availability
+    ->     SELECT available_copies INTO v_available
+    ->     FROM books
+    ->     WHERE book_id = p_book_id
+    ->     FOR UPDATE;
+    ->
+    ->     IF v_available <= 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'No available copies to issue' AS error_message;
+    ->         LEAVE;
+    ->     END IF;
+    ->
+    ->     -- Calculate due date
+    ->     SET v_due = DATE_ADD(CURDATE(), INTERVAL p_days DAY);
+    ->
+    ->     -- Insert loan (triggers handle decrement & logging)
+    ->     INSERT INTO loans(book_id, member_id, due_date)
+    ->     VALUES (p_book_id, p_member_id, v_due);
+    ->
+    ->     COMMIT;
+    -> END$$
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ';
+    END IF;
+
+    -- Check book exists
+    IF (SELECT COUNT(*) FROM books WHERE' at line 12
+mysql>
+mysql> DELIMITER ;
+mysql> -- Return a book; calculates fine via function and creates fine record if needed
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> DROP PROCEDURE IF EXISTS sp_return_book;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> DELIMITER $$
+mysql>
+mysql> CREATE PROCEDURE sp_return_book(IN p_loan_id INT, IN p_return_date DATE)
+    -> BEGIN
+    ->     DECLARE v_due DATE;
+    ->     DECLARE v_amount DECIMAL(8,2);
+    ->
+    ->     START TRANSACTION;
+    ->
+    ->     -- Ensure loan exists
+    ->     IF (SELECT COUNT(*) FROM loans WHERE loan_id = p_loan_id) = 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'Loan not found' AS error_message;
+    ->         LEAVE;
+    ->     END IF;
+    ->
+    ->     -- Lock the loan row and get due date
+    ->     SELECT due_date INTO v_due
+    ->     FROM loans
+    ->     WHERE loan_id = p_loan_id
+    ->     FOR UPDATE;
+    ->
+    ->     -- Update return date
+    ->     UPDATE loans
+    ->     SET return_date = p_return_date
+    ->     WHERE loan_id = p_loan_id;
+    ->
+    ->     -- Calculate fine using your function
+    ->     SET v_amount = fn_calc_fine(v_due, p_return_date);
+    ->
+    ->     -- Insert or update fine
+    ->     IF v_amount > 0 THEN
+    ->         INSERT INTO fines(loan_id, amount, paid)
+    ->         VALUES (p_loan_id, v_amount, 'No')
+    ->         ON DUPLICATE KEY UPDATE amount = VALUES(amount), paid = 'No';
+    ->     END IF;
+    ->
+    ->     COMMIT;
+    -> END$$
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ';
+    END IF;
+
+    -- Lock the loan row and get due date
+    SELECT due_date INT' at line 12
+mysql>
+mysql> DELIMITER ;
+mysql> DROP PROCEDURE IF EXISTS sp_return_book;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> DELIMITER $$
+mysql>
+mysql> CREATE PROCEDURE sp_return_book(IN p_loan_id INT, IN p_return_date DATE)
+    -> myproc: BEGIN
+    ->     DECLARE v_due DATE;
+    ->     DECLARE v_amount DECIMAL(8,2);
+    ->
+    ->     START TRANSACTION;
+    ->
+    ->     -- Ensure loan exists
+    ->     IF (SELECT COUNT(*) FROM loans WHERE loan_id = p_loan_id) = 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'Loan not found' AS error_message;
+    ->         LEAVE myproc;
+    ->     END IF;
+    ->
+    ->     -- Lock the loan row and get due date
+    ->     SELECT due_date INTO v_due
+    ->     FROM loans
+    ->     WHERE loan_id = p_loan_id
+    ->     FOR UPDATE;
+    ->
+    ->     -- Update return date
+    ->     UPDATE loans
+    ->     SET return_date = p_return_date
+    ->     WHERE loan_id = p_loan_id;
+    ->
+    ->     -- Calculate fine using your function
+    ->     SET v_amount = fn_calc_fine(v_due, p_return_date);
+    ->
+    ->     -- Insert or update fine
+    ->     IF v_amount > 0 THEN
+    ->         INSERT INTO fines(loan_id, amount, paid)
+    ->         VALUES (p_loan_id, v_amount, 'No')
+    ->         ON DUPLICATE KEY UPDATE amount = VALUES(amount), paid = 'No';
+    ->     END IF;
+    ->
+    ->     COMMIT;
+    -> END$$
+Query OK, 0 rows affected (0.01 sec)
+
+mysql>
+mysql> DELIMITER ;
+mysql> /* ----------
+   /*>    VIEWS
+   /*>    ---------- */
+    ->
+    -> -- All currently issued (not returned) loans
+    -> CREATE OR REPLACE VIEW v_current_loans AS
+    -> SELECT l.loan_id, b.title, m.name AS member_name, l.loan_date, l.due_date,
+    ->        DATEDIFF(l.due_date, CURRENT_DATE) AS days_left
+    -> FROM loans l
+    -> JOIN books b   ON b.book_id = l.book_id
+    -> JOIN members m ON m.member_id = l.member_id
+    -> WHERE l.return_date IS NULL;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> -- Overdue (not returned and past due)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE OR REPLACE VIEW v_overdue_loans AS
+    -> SELECT l.loan_id, b.title, m.name AS member_name, l.loan_date, l.due_date,
+    ->        DATEDIFF(CURRENT_DATE, l.due_date) AS days_overdue
+    -> FROM loans l
+    -> JOIN books b   ON b.book_id = l.book_id
+    -> JOIN members m ON m.member_id = l.member_id
+    -> WHERE l.return_date IS NULL
+    ->   AND l.due_date < CURRENT_DATE;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> -- Member fine summary
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CREATE OR REPLACE VIEW v_member_fines AS
+    -> SELECT m.member_id, m.name, COALESCE(SUM(f.amount),0) AS total_fines,
+    ->        SUM(f.paid = 'No') AS unpaid_entries
+    -> FROM members m
+    -> LEFT JOIN loans  l ON l.member_id = m.member_id
+    -> LEFT JOIN fines  f ON f.loan_id = l.loan_id
+    -> GROUP BY m.member_id, m.name;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> /* ---------------------------
+   /*>    DEMO / SAMPLE OPERATIONS
+   /*>    --------------------------- */
+    ->
+    -> -- Issue some books (will decrement available_copies via trigger)
+    -> CALL sp_issue_book(1, 1, 7);  -- Aarav borrows "HP1" for 7 days
+ERROR 1305 (42000): PROCEDURE library_db.sp_issue_book does not exist
+mysql> CALL sp_issue_book(2, 4, 10); -- Isha borrows "Murder on the Orient Express"
+ERROR 1305 (42000): PROCEDURE library_db.sp_issue_book does not exist
+mysql> CALL sp_issue_book(3, 2, 14); -- Rohan borrows "A Game of Thrones"
+ERROR 1305 (42000): PROCEDURE library_db.sp_issue_book does not exist
+mysql> DROP PROCEDURE IF EXISTS sp_issue_book;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql>
+mysql> DELIMITER $$
+mysql>
+mysql> CREATE PROCEDURE sp_issue_book(IN p_member_id INT, IN p_book_id INT, IN p_days INT)
+    -> myproc: BEGIN
+    ->     DECLARE v_available INT;
+    ->     DECLARE v_due DATE;
+    ->
+    ->     START TRANSACTION;
+    ->
+    ->     -- Check member exists
+    ->     IF (SELECT COUNT(*) FROM members WHERE member_id = p_member_id) = 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'Member not found' AS error_message;
+    ->         LEAVE myproc;
+    ->     END IF;
+    ->
+    ->     -- Check book exists
+    ->     IF (SELECT COUNT(*) FROM books WHERE book_id = p_book_id) = 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'Book not found' AS error_message;
+    ->         LEAVE myproc;
+    ->     END IF;
+    ->
+    ->     -- Check availability
+    ->     SELECT available_copies INTO v_available
+    ->     FROM books
+    ->     WHERE book_id = p_book_id
+    ->     FOR UPDATE;
+    ->
+    ->     IF v_available <= 0 THEN
+    ->         ROLLBACK;
+    ->         SELECT 'No available copies to issue' AS error_message;
+    ->         LEAVE myproc;
+    ->     END IF;
+    ->
+    ->     -- Calculate due date
+    ->     SET v_due = DATE_ADD(CURDATE(), INTERVAL p_days DAY);
+    ->
+    ->     -- Insert loan (triggers handle decrement & logging)
+    ->     INSERT INTO loans(book_id, member_id, due_date)
+    ->     VALUES (p_book_id, p_member_id, v_due);
+    ->
+    ->     COMMIT;
+    -> END$$
+Query OK, 0 rows affected (0.00 sec)
+
+mysql>
+mysql> DELIMITER ;
+mysql> -- Issue some books (will decrement available_copies via trigger)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CALL sp_issue_book(1, 1, 7);  -- Aarav borrows "HP1" for 7 days
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> CALL sp_issue_book(2, 4, 10); -- Isha borrows "Murder on the Orient Express"
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CALL sp_issue_book(3, 2, 14); -- Rohan borrows "A Game of Thrones"
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> -- Return a book on time (no fine)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> CALL sp_return_book(1, CURRENT_DATE);
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> -- Return another late (incurs fine)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> -- simulate late by setting return date 5 days after due
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> UPDATE loans SET due_date = DATE_SUB(CURRENT_DATE, INTERVAL 5 DAY) WHERE loan_id = 2;
+ERROR 3819 (HY000): Check constraint 'chk_due_after_loan' is violated.
+mysql> ALTER TABLE loans DISABLE KEYS;
+Query OK, 0 rows affected, 1 warning (0.01 sec)
+
+mysql> ALTER TABLE loans DROP CHECK chk_due_after_loan;
+Query OK, 0 rows affected (0.02 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> UPDATE loans SET due_date = DATE_SUB(CURRENT_DATE, INTERVAL 5 DAY) WHERE loan_id = 2;
+Query OK, 1 row affected (0.01 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+
+mysql> CALL sp_return_book(2, CURRENT_DATE);
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> -- Check inventory after issues/returns
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT book_id, title, total_copies, available_copies FROM books;
++---------+------------------------------------------+--------------+------------------+
+| book_id | title                                    | total_copies | available_copies |
++---------+------------------------------------------+--------------+------------------+
+|       1 | Harry Potter and the Philosopher's Stone |           10 |               10 |
+|       2 | A Game of Thrones                        |            8 |                7 |
+|       3 | The Hobbit                               |            5 |                5 |
+|       4 | Murder on the Orient Express             |            6 |                6 |
+|       5 | 2 States                                 |            4 |                4 |
++---------+------------------------------------------+--------------+------------------+
+5 rows in set (0.00 sec)
+
+mysql> -- See current loans & overdue
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT * FROM v_current_loans;
++---------+-------------------+-------------+------------+------------+-----------+
+| loan_id | title             | member_name | loan_date  | due_date   | days_left |
++---------+-------------------+-------------+------------+------------+-----------+
+|       3 | A Game of Thrones | Rohan Mehta | 2025-08-14 | 2025-08-28 |        14 |
++---------+-------------------+-------------+------------+------------+-----------+
+1 row in set (0.01 sec)
+
+mysql> SELECT * FROM v_overdue_loans;
+Empty set (0.00 sec)
+
+mysql> -- See fines and member fine summary
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT * FROM fines;
++---------+---------+--------+------+---------------------+
+| fine_id | loan_id | amount | paid | created_at          |
++---------+---------+--------+------+---------------------+
+|       1 |       2 |  25.00 | No   | 2025-08-14 01:04:34 |
++---------+---------+--------+------+---------------------+
+1 row in set (0.00 sec)
+
+mysql> SELECT * FROM v_member_fines;
++-----------+--------------+-------------+----------------+
+| member_id | name         | total_fines | unpaid_entries |
++-----------+--------------+-------------+----------------+
+|         1 | Aarav Sharma |        0.00 |           NULL |
+|         2 | Isha Verma   |       25.00 |              1 |
+|         3 | Rohan Mehta  |        0.00 |           NULL |
++-----------+--------------+-------------+----------------+
+3 rows in set (0.01 sec)
+
+mysql> -- Some useful example queries (JOIN, GROUP BY, HAVING, subqueries)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql>
+mysql> -- 1) Top 3 most borrowed books
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT b.book_id, b.title, COUNT(*) AS times_borrowed
+    -> FROM loans l
+    -> JOIN books b ON b.book_id = l.book_id
+    -> GROUP BY b.book_id, b.title
+    -> ORDER BY times_borrowed DESC
+    -> LIMIT 3;
++---------+------------------------------------------+----------------+
+| book_id | title                                    | times_borrowed |
++---------+------------------------------------------+----------------+
+|       1 | Harry Potter and the Philosopher's Stone |              1 |
+|       2 | A Game of Thrones                        |              1 |
+|       4 | Murder on the Orient Express             |              1 |
++---------+------------------------------------------+----------------+
+3 rows in set (0.00 sec)
+
+mysql> -- 2) Members with unpaid fines
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT m.member_id, m.name, f.amount
+    -> FROM fines f
+    -> JOIN loans l   ON l.loan_id = f.loan_id
+    -> JOIN members m ON m.member_id = l.member_id
+    -> WHERE f.paid = 'No';
++-----------+------------+--------+
+| member_id | name       | amount |
++-----------+------------+--------+
+|         2 | Isha Verma |  25.00 |
++-----------+------------+--------+
+1 row in set (0.00 sec)
+
+mysql> -- 3) Books with no available copies (fully issued)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT book_id, title
+    -> FROM books
+    -> WHERE available_copies = 0;
+Empty set (0.00 sec)
+
+mysql> -- 4) Search books by keyword in title (uses idx_books_title)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT book_id, title FROM books
+    -> WHERE title LIKE '%the%';
++---------+------------------------------------------+
+| book_id | title                                    |
++---------+------------------------------------------+
+|       1 | Harry Potter and the Philosopher's Stone |
+|       4 | Murder on the Orient Express             |
+|       3 | The Hobbit                               |
++---------+------------------------------------------+
+3 rows in set (0.00 sec)
+
+mysql> -- 5) Subquery: authors who have books borrowed right now
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SELECT a.author_id, a.name
+    -> FROM authors a
+    -> WHERE a.author_id IN (
+    ->   SELECT b.author_id
+    ->   FROM books b
+    ->   JOIN loans l ON l.book_id = b.book_id
+    ->   WHERE l.return_date IS NULL
+    -> );
++-----------+---------------------+
+| author_id | name                |
++-----------+---------------------+
+|         2 | George R. R. Martin |
++-----------+---------------------+
+1 row in set (0.00 sec)
+
+mysql>
